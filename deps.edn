@@ -1,0 +1,14 @@
+{:paths ["src"]
+
+ :aliases
+ {:build
+  {:deps {me.raystubbs.clj-arsenal/build {:local/root "../build"}}
+   :ns-default clj-arsenal.build}}
+
+ :clj-arsenal.build/meta
+ {:version [0 0 0]
+  :name me.raystubbs.clj-arsenal/log
+  :license "The MIT License"
+  :license-url "https://opensource.org/license/mit/"
+  :pub-url "https://github.com/clj-arsenal/check"
+  :git-url "https://github.com/clj-arsenal/check.git"}}
