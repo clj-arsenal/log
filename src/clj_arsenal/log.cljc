@@ -67,7 +67,7 @@
      `(let [~value-sym ~x]
         (log*
           ~(merge
-             {:spy `'~x :level :debug :msg ~value-sym :ns `(quote ~(ns-name *ns*))}
+             {:spy `(quote ~x) :level :debug :msg value-sym :ns `(quote ~(ns-name *ns*))}
              (-> &form meta (select-keys [:file :line]))))
         ~value-sym)))
   ([spy-name x]
@@ -75,6 +75,6 @@
      `(let [~value-sym ~x]
         (log*
           ~(merge
-             {:spy spy-name :level :debug :msg ~value-sym :ns `(quote ~(ns-name *ns*))}
+             {:spy spy-name :level :debug :msg value-sym :ns `(quote ~(ns-name *ns*))}
              (-> &form meta (select-keys [:file :line]))))
         ~value-sym))))
