@@ -1,9 +1,10 @@
 (ns  clj-arsenal.log
   #?(:cljs (:require-macros clj-arsenal.log))
   (:require
-   #?(:clj [clojure.stacktrace :as stacktrace])))
+   #?@(:cljd []
+       :clj [[clojure.stacktrace :as stacktrace]])))
 
-(def ^:private devtools? (boolean (find-ns 'devtools.formatters.core)))
+(def ^:private devtools? #?(:cljs (boolean (find-ns 'devtools.formatters.core)) :default false))
 
 (defn default-logger
   [{:keys [level msg ex file line] :as event}]
@@ -24,6 +25,23 @@
 
              (not devtools?)
              (->> (map pr-str)))))
+
+        :cljd
+        (do
+          (println
+            (case level
+              :error "ERROR"
+              :warn "WARN"
+              :info "INFO"
+              :debug "DEBUG")
+            (str msg))
+          (doseq [[k v] (cond-> (or data {}) true (dissoc :st) (and file line) (conj [:loc (str file ":" line)]))]
+            (println k v))
+          (when ex
+            (println ex))
+          (when-some [st (:st data)]
+            (println st)))
+
         :clj
         (binding [*out* *err*]
           (printf "%s %s%n"
@@ -59,7 +77,7 @@
 (defmacro log
   [level & {:as data}]
   {:pre [(keyword? level)]}
-  `(log* ~(merge data (-> &form meta (select-keys [:file :line])) {:ns `(quote ~(ns-name *ns*)) :level level})))
+  `(log* ~(merge data (-> &form meta (select-keys [:file :line])) {#?@(:cljd [] :clj [:ns `(quote ~(ns-name *ns*))]) :level level})))
 
 (defmacro spy
   ([x]
@@ -67,7 +85,7 @@
      `(let [~value-sym ~x]
         (log*
           ~(merge
-             {:spy `(quote ~x) :level :debug :msg value-sym :ns `(quote ~(ns-name *ns*))}
+             {:spy `(quote ~x) :level :debug :msg value-sym #?@(:cljd [] :clj [:ns `(quote ~(ns-name *ns*))])}
              (-> &form meta (select-keys [:file :line]))))
         ~value-sym)))
   ([spy-name x]
@@ -75,6 +93,6 @@
      `(let [~value-sym ~x]
         (log*
           ~(merge
-             {:spy spy-name :level :debug :msg value-sym :ns `(quote ~(ns-name *ns*))}
+             {:spy spy-name :level :debug :msg value-sym #?@(:cljd [] :clj [:ns `(quote ~(ns-name *ns*))])}
              (-> &form meta (select-keys [:file :line]))))
         ~value-sym))))
