@@ -93,6 +93,6 @@
      `(let [~value-sym ~x]
         (log*
           ~(merge
-             {:spy spy-name :level :debug :msg value-sym #?@(:cljd [] :clj [:ns `(quote ~(ns-name *ns*))])}
+             {:spy `(quote ~spy-name) :level :debug :msg value-sym #?@(:cljd [] :clj [:ns `(quote ~(ns-name *ns*))])}
              (-> &form meta (select-keys [:file :line]))))
         ~value-sym))))
