@@ -39,7 +39,7 @@
             (println k v))
           (when ex
             (println ex))
-          (when-some [st (or (:st data) (.-stackTrace ^Error ex))]
+          (when-some [st (or (:st data) (some-> ^Error? ex .-stackTrace))]
             (println st)))
 
         :clj
