@@ -8,7 +8,14 @@
 
 (defn default-logger
   [{:keys [level msg ex file line] :as event}]
-  (let [data (dissoc event :level :msg :ex :file :line)]
+  (let [data (cond-> event
+               true
+               (dissoc :level :msg :ex)
+
+               (and file line)
+               (->
+                 (dissoc :file :line)
+                 (assoc :loc (str file ":" line))))]
     #?(:cljs
        (let [log-fn (case level
                       :error (.bind js/console.error js/console)
@@ -18,7 +25,7 @@
          (apply log-fn
            (cond-> [msg]
              (some? data)
-             (conj (cond-> data (and file line) (conj [:loc (str file ":" line)])))
+             (conj data)
 
              (some? ex)
              (into ["\n" ex])
@@ -34,12 +41,15 @@
               :warn "WARN"
               :info "INFO"
               :debug "DEBUG")
-            (str msg))
+            (cond-> msg (not (string? msg)) pr-str))
           (doseq [[k v] (cond-> (or data {}) true (dissoc :st) (and file line) (conj [:loc (str file ":" line)]))]
             (println k v))
           (when ex
             (println ex))
-          (when-some [st (or (:st data) (some-> ^Error? ex .-stackTrace))]
+          (when-some [st (or (:st data)
+                           (when (instance? Error ex)
+                             (.-stackTrace ^Error ex))
+                           (some-> (ex-data ex) :st))]
             (println st)))
 
         :clj
@@ -50,7 +60,7 @@
               :warn "WARN"
               :info "INFO"
               :debug "DEBUG")
-            (str msg))
+            (cond-> msg (not (string? msg)) pr-str))
           (doseq [[k v] (cond-> (or data {}) (and file line) (conj [:loc (str file ":" line)]))]
             (printf "  %s %s%n" k v))
           (when ex
@@ -77,22 +87,33 @@
 (defmacro log
   [level & {:as data}]
   {:pre [(keyword? level)]}
-  `(log* ~(merge data (-> &form meta (select-keys [:file :line])) {#?@(:cljd [] :clj [:ns `(quote ~(ns-name *ns*))]) :level level})))
+  `(log*
+     ~(merge data
+        {#?@(:cljd [] :clj [:file *file*])
+         :line (-> &form meta :line)
+         #?@(:cljd [] :clj [:ns `(quote ~(ns-name *ns*))])
+         :level level})))
 
 (defmacro spy
   ([x]
    (let [value-sym (gensym)]
      `(let [~value-sym ~x]
         (log*
-          ~(merge
-             {:spy `(quote ~x) :level :debug :msg value-sym #?@(:cljd [] :clj [:ns `(quote ~(ns-name *ns*))])}
-             (-> &form meta (select-keys [:file :line]))))
+          ~{#?@(:cljd [] :clj [:file *file*])
+            :line (-> &form meta :line)
+            :spy `(quote ~x)
+            :level :debug
+            :msg value-sym
+            #?@(:cljd [] :clj [:ns `(quote ~(ns-name *ns*))])})
         ~value-sym)))
   ([spy-name x]
    (let [value-sym (gensym)]
      `(let [~value-sym ~x]
         (log*
-          ~(merge
-             {:spy `(quote ~spy-name) :level :debug :msg value-sym #?@(:cljd [] :clj [:ns `(quote ~(ns-name *ns*))])}
-             (-> &form meta (select-keys [:file :line]))))
+          ~{#?@(:cljd [] :clj [:file *file*])
+            :line (-> &form meta :line)
+            :spy `(quote ~spy-name)
+            :level :debug
+            :msg value-sym
+            #?@(:cljd [] :clj [:ns `(quote ~(ns-name *ns*))])})
         ~value-sym))))
