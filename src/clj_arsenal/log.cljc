@@ -89,9 +89,9 @@
   {:pre [(keyword? level)]}
   `(log*
      ~(merge data
-        {#?@(:cljd/host [:file *file*] :cljd [] :clj [:file *file*])
+        {#?@(:cljd/clj-host [:file *file*] :cljd [] :clj [:file *file*])
          :line (-> &form meta :line)
-         #?@(:cljd/host [:ns `(quote ~(ns-name *ns*))] :cljd [] :clj [:ns `(quote ~(ns-name *ns*))])
+         #?@(:cljd/clj-host [:ns `(quote ~(ns-name *ns*))] :cljd [] :clj [:ns `(quote ~(ns-name *ns*))])
          :level level})))
 
 (defmacro spy
@@ -99,21 +99,21 @@
    (let [value-sym (gensym)]
      `(let [~value-sym ~x]
         (log*
-          ~{#?@(:cljd/host [:file *file*] :cljd [] :clj [:file *file*])
+          ~{#?@(:cljd/clj-host [:file *file*] :cljd [] :clj [:file *file*])
             :line (-> &form meta :line)
             :spy `(quote ~x)
             :level :debug
             :msg value-sym
-            #?@(:cljd/host [:ns `(quote ~(ns-name *ns*))] :cljd [] :clj [:ns `(quote ~(ns-name *ns*))])})
+            #?@(:cljd/clj-host [:ns `(quote ~(ns-name *ns*))] :cljd [] :clj [:ns `(quote ~(ns-name *ns*))])})
         ~value-sym)))
   ([spy-name x]
    (let [value-sym (gensym)]
      `(let [~value-sym ~x]
         (log*
-          ~{#?@(:cljd/host [:file *file*] :cljd [] :clj [:file *file*])
+          ~{#?@(:cljd/clj-host [:file *file*] :cljd [] :clj [:file *file*])
             :line (-> &form meta :line)
             :spy `(quote ~spy-name)
             :level :debug
             :msg value-sym
-            #?@(:cljd/host [:ns `(quote ~(ns-name *ns*))] :cljd [] :clj [:ns `(quote ~(ns-name *ns*))])})
+            #?@(:cljd/clj-host [:ns `(quote ~(ns-name *ns*))] :cljd [] :clj [:ns `(quote ~(ns-name *ns*))])})
         ~value-sym))))
