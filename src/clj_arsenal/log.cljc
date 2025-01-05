@@ -84,8 +84,9 @@
   (doseq [logger @!loggers]
     (logger event)))
 
-(defmacro log
-  [level & {:as data}]
+(defmacro log "
+Log something.
+" [level & {:as data}]
   {:pre [(keyword? level)]}
   `(log*
      ~(merge data
@@ -94,8 +95,9 @@
          #?@(:cljd/clj-host [:ns `(quote ~(ns-name *ns*))] :cljd [] :clj [:ns `(quote ~(ns-name *ns*))])
          :level level})))
 
-(defmacro spy
-  ([x]
+(defmacro spy "
+Log and then return `x`.
+" ([x]
    (let [value-sym (gensym)]
      `(let [~value-sym ~x]
         (log*
