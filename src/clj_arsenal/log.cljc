@@ -1,71 +1,164 @@
 (ns  clj-arsenal.log
   #?(:cljs (:require-macros clj-arsenal.log))
   (:require
-   #?@(:cljd []
-       :clj [[clojure.stacktrace :as stacktrace]])))
+   [clj-arsenal.basis :as b]
+   [clojure.string :as str]
+   #?@(:cljd
+       [["dart:io" :as io]]
+
+       :clj
+       [[clojure.stacktrace :as stacktrace]
+        [clojure.pprint :as pp]]
+       
+       :cljs
+       [[clojure.pprint :as pp]])))
 
 (def ^:private devtools? #?(:cljs (boolean (find-ns 'devtools.formatters.core)) :default false))
 
-(defn default-logger
-  [{:keys [level msg ex file line] :as event}]
-  (let [data (cond-> event
-               true
-               (dissoc :level :msg :ex)
+(defn- stringify
+  [x]
+  (if (string? x)
+    x
+    #?(:cljd (str x)
+       :default (with-out-str (pp/pprint x)))))
 
-               (and file line)
-               (->
-                 (dissoc :file :line)
-                 (assoc :loc (str file ":" line))))]
+(defn- stringify-log-args
+  [args]
+  (let [args-vec (vec args)]
+    (str/join
+      (map-indexed
+        (fn [idx arg]
+          (if
+            (or (zero? idx)
+              (and (string? arg) (re-matches #"\s.*" arg))
+              (as-> (get args-vec (dec idx)) prev
+                (and (string? prev) (re-matches #".*\s" prev))))
+            (stringify arg)
+            (str " " (stringify arg))))
+        args-vec))))
+
+(defn- default-logger-printer
+  [level & args]
+  (as-> args $
+    (mapcat
+      (fn flatten-args [x]
+        (cond
+          (nil? x)
+          nil
+          
+          (seq? x)
+          (mapcat flatten-args x)
+          
+          :else
+          (vector x)))
+      $)
     #?(:cljs
-       (let [log-fn (case level
-                      :error (.bind js/console.error js/console)
-                      :warn (.bind js/console.warn js/console)
-                      :info (.bind js/console.info js/console)
-                      :debug (.bind js/console.debug js/console))]
-         (apply log-fn
-           (cond-> [msg]
-             (some? data)
-             (conj data)
+       (apply
+         (case level
+           :error (.bind js/console.error js/console)
+           :warn (.bind js/console.warn js/console)
+           :info (.bind js/console.info js/console)
+           :debug (.bind js/console.debug js/console))
+         (cond->> $ (not devtools?) (map stringify)))
 
-             (some? ex)
-             (into ["\n" ex])
+       :cljd
+       (.write io/stderr (stringify-log-args $))
 
-             (not devtools?)
-             (->> (map pr-str)))))
+       :clj
+       (binding [*out* *err*]
+         (apply print (stringify-log-args $))
+         (flush))))
+  nil)
 
-        :cljd
-        (do
-          (println
-            (case level
-              :error "ERROR"
-              :warn "WARN"
-              :info "INFO"
-              :debug "DEBUG")
-            (cond-> msg (not (string? msg)) pr-str))
-          (doseq [[k v] (cond-> (or data {}) true (dissoc :st) (and file line) (conj [:loc (str file ":" line)]))]
-            (println k v))
-          (when ex
-            (println ex))
-          (when-some [st (or (:st data)
-                           (when (instance? Error ex)
-                             (.-stackTrace ^Error ex))
-                           (some-> (ex-data ex) :st))]
-            (println st)))
+(defn- default-logger-prefix
+  [{:keys [level] :as _event}]
+  (str/upper-case (name level)))
 
-        :clj
-        (binding [*out* *err*]
-          (printf "%s %s%n"
-            (case level
-              :error "ERROR"
-              :warn "WARN"
-              :info "INFO"
-              :debug "DEBUG")
-            (cond-> msg (not (string? msg)) pr-str))
-          (doseq [[k v] (cond-> (or data {}) (and file line) (conj [:loc (str file ":" line)]))]
-            (printf "  %s %s%n" k v))
-          (when ex
-            (stacktrace/print-stack-trace ex))
-          (flush)))))
+(defn- default-logger-src
+  [{:keys [file line]}]
+  (str file ":" line))
+
+(defn- default-logger-stack-trace
+  [st]
+  (or
+    (when (string? st)
+      st)
+    #?(:cljd nil
+       :clj
+       (when (or (sequential? st) (-> st class .isArray))
+         (with-out-str
+           (doseq [element st]
+             (print "  ")
+             (if (instance? StackTraceElement element)
+               (stacktrace/print-trace-element element)
+               (str element "\n"))))))
+    (str st)))
+
+(defn- default-logger-err
+  [{:keys [msg err ex] :as event}]
+  (let
+    [err (or err ex)
+     data (or (b/err-data err) (ex-data ex))
+     cause (or (:cause data) #?(:cljd nil :clj (ex-cause err) :cljs (ex-cause err)))
+     msg (or msg (str/join " " (filter some? [(:id data) (:msg data)])))
+     skip-keys (set (::skip-keys event))
+
+     extra-data
+     (into {}
+       (keep
+         (fn [[k _ :as entry]]
+           (when
+             (and (not (contains? skip-keys k))
+               (or (not (keyword? k)) (not= "clj-arsenal.log" (namespace k))))
+             (case k
+               (:id :msg :cause :st :ns :err :ex :line :file :level) nil
+               entry))))
+       (concat data event))
+
+     st
+     (or (:st data)
+       #?(:cljs (.-stack ^js err)
+          :cljd (when (instance? Error err) (.-stackTrace ^Error err))
+          :clj (when (instance? Throwable err) (.getStackTrace ^Throwable err))))]
+    (list
+      (when-not (str/blank? msg)
+        (list msg "\n\n"))
+      (when (seq extra-data)
+        (list
+          :data "\n"
+          extra-data
+          "\n\n"))
+      (when (some? st)
+        (list
+          :trace "\n"
+          (default-logger-stack-trace st)
+          "\n\n"))
+      (when (some? cause)
+        (list
+          :cause "\n"
+          cause
+          "\n\n")))))
+
+(defn default-logger
+  [{:keys [level msg ex err] :as event}]
+  (default-logger-printer level
+    (list
+      (default-logger-prefix event)
+      (when-not (::skip-loc event)
+        (default-logger-src event))
+      "\n\n"
+      (if (or (some? ex) (some? err))
+        (default-logger-err event)
+        (list
+          (when (some? msg)
+            (list msg "\n\n"))
+          (let [extra-data (dissoc event :level :msg :ex :err :file :line)]
+            (when (seq extra-data)
+              (list
+                :data "\n"
+                extra-data
+                "\n\n")))))
+      "\n")))
 
 (defonce !loggers (atom #{default-logger}))
 
@@ -89,11 +182,14 @@ Log something.
 " [level & {:as data}]
   {:pre [(keyword? level)]}
   `(log*
-     ~(merge data
+     ~(merge
         {#?@(:cljd/clj-host [:file *file*] :cljd [] :clj [:file *file*])
          :line (-> &form meta :line)
-         #?@(:cljd/clj-host [:ns `(quote ~(ns-name *ns*))] :cljd [] :clj [:ns `(quote ~(ns-name *ns*))])
-         :level level})))
+         :level level
+
+         #?@(:cljd [:ns `(quote ~(get-in &env [:nses :current-ns]))]
+             :clj [:ns `(quote ~(ns-name *ns*))])}
+        data)))
 
 (defmacro spy "
 Log and then return `x`.
@@ -106,7 +202,9 @@ Log and then return `x`.
             :spy `(quote ~x)
             :level :debug
             :msg value-sym
-            #?@(:cljd/clj-host [:ns `(quote ~(ns-name *ns*))] :cljd [] :clj [:ns `(quote ~(ns-name *ns*))])})
+
+            #?@(:cljd [:ns `(quote ~(get-in &env [:nses :current-ns]))]
+                :clj [:ns `(quote ~(ns-name *ns*))])})
         ~value-sym)))
   ([spy-name x]
    (let [value-sym (gensym)]
@@ -117,5 +215,7 @@ Log and then return `x`.
             :spy `(quote ~spy-name)
             :level :debug
             :msg value-sym
-            #?@(:cljd/clj-host [:ns `(quote ~(ns-name *ns*))] :cljd [] :clj [:ns `(quote ~(ns-name *ns*))])})
+
+            #?@(:cljd [:ns `(quote ~(get-in &env [:nses :current-ns]))]
+                :clj [:ns `(quote ~(ns-name *ns*))])})
         ~value-sym))))

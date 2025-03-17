@@ -1,5 +1,9 @@
 {:paths ["src"]
 
+ :deps
+ {me.raystubbs.clj-arsenal/basis
+  {:local/root "../basis"}}
+
  :aliases
  {:build
   {:deps {me.raystubbs.clj-arsenal/build {:mvn/version "0.0.5"}}
