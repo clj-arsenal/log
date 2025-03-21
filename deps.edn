@@ -2,7 +2,8 @@
 
  :deps
  {me.raystubbs.clj-arsenal/basis
-  {:local/root "../basis"}}
+  {:git/url "https://github.com/clj-arsenal/basis.git"
+   :git/sha "6641f8c220cc1ef5b29cdec1b552414ab8dbf104"}}
 
  :aliases
  {:build
