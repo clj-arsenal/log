@@ -62,11 +62,11 @@
          (cond->> $ (not devtools?) (map stringify)))
 
        :cljd
-       (.write io/stderr (stringify-log-args $))
+       (print (stringify-log-args $))
 
        :clj
        (binding [*out* *err*]
-         (apply print (stringify-log-args $))
+         (print (stringify-log-args $))
          (flush))))
   nil)
 
