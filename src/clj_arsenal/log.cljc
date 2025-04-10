@@ -107,12 +107,11 @@
            (log-fn (stringify-log-args args))))
 
        :cljd
-       (binding [*out* io/stderr]
-         (print (stringify-log-args args)))
+       (println (stringify-log-args args))
 
        :clj
        (binding [*out* *err*]
-         (print (stringify-log-args args))
+         (println (stringify-log-args args))
          (flush))))
   nil)
 
