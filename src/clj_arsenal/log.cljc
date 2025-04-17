@@ -42,25 +42,37 @@
 
 (defn- stringify-log-args
   [args]
-  (let [args-vec (vec args)]
-    (str/join
-      (map-indexed
-        (fn [idx arg]
-          (cond
-            (instance? AnsiEscape arg)
-            (when use-ansi-escape-codes?
-              (str "\u001B[" (:code arg) "m"))
+  (loop
+    [args-remaining args
+     arg-strings []
+     last-non-esc-str nil]
+    (cond
+      (empty? args-remaining)
+      (str/join arg-strings)
 
-            (or (zero? idx)
-              (instance? AnsiEscape (get args-vec (dec idx)))
-              (as-> (get args-vec (dec idx)) prev
-                (or (instance? AnsiEscape prev)
-                  (and (string? prev) (re-matches #".*\s" prev)))))
-            (str arg)
+      :else
+      (let
+        [[arg & rest-args] args-remaining]
+        (cond
+          (instance? AnsiEscape arg)
+          (recur
+            rest-args
+            (cond-> arg-strings
+              use-ansi-escape-codes?
+              (conj (str "\u001B[" (:code arg) "m"))) 
+            last-non-esc-str)
 
-            :else
-            (str " " arg)))
-        args-vec))))
+          (or (nil? last-non-esc-str)
+            (and (string? last-non-esc-str)
+              (case (last last-non-esc-str)
+                (\space \newline) true
+                false)))
+          (as-> (str arg) arg-str
+            (recur rest-args (conj arg-strings arg-str) arg-str))
+
+          :else
+          (as-> (str " " arg) arg-str
+            (recur rest-args (conj arg-strings arg-str) arg-str)))))))
 
 (def ^:private ansi-escapes
   {:reset (->AnsiEscape 0)
